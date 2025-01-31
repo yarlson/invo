@@ -1,0 +1,51 @@
+version: 2
+
+project_name: invo
+
+builds:
+  - id: invo
+    main: ./cmd/invoice/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/yarlson/invo/cmd.version={{.Version}}
+
+archives:
+  - id: release_archive
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+release:
+  github:
+    owner: yarlson
+    name: invo
+  draft: true
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+brews:
+  - name: invo
+    repository:
+      owner: yarlson
+      name: homebrew-invo
+    url_template: "https://github.com/yarlson/invo/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    commit_author:
+      name: Yar Kravtsov
+      email: yarlson@gmail.com
+    homepage: "https://github.com/yarlson/invo"
+    description: "invo: a minimalist CLI tool for generating professional PDF invoices"
+    license: "MIT"
+    test: |
+      system "#{bin}/invo --version"
+    install: |
+      bin.install "invo"
