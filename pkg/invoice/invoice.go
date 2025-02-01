@@ -1,3 +1,4 @@
+// Package invoice provides functionality for generating PDF invoices.
 package invoice
 
 import (
@@ -7,10 +8,11 @@ import (
 	"time"
 
 	"github.com/go-pdf/fpdf"
+
 	"invo/pkg/invoice/fonts"
 )
 
-// Invoice holds the invoice data along with a reference to the config.
+// Invoice represents a complete invoice with all necessary data.
 type Invoice struct {
 	Year        int
 	Month       int
@@ -20,29 +22,12 @@ type Invoice struct {
 	Period      string
 	InvoiceNum  string
 	Subtotal    float64
-	SubtotalStr string
 	Config      *config.Config
 }
 
-// NewInvoice creates and returns a new Invoice using the provided config and quantities.
+// NewInvoice creates a new Invoice instance with calculated fields.
 func NewInvoice(invoiceNum string, year, month int, qtys []int, cfg *config.Config) *Invoice {
-	if len(qtys) != len(cfg.Items) {
-		newQtys := make([]int, len(cfg.Items))
-		for i := range cfg.Items {
-			if i < len(qtys) {
-				newQtys[i] = qtys[i]
-			} else {
-				newQtys[i] = 1
-			}
-		}
-		qtys = newQtys
-	}
-
-	items := make([]config.Item, len(cfg.Items))
-	for i, item := range cfg.Items {
-		item.Quantity = qtys[i]
-		items[i] = item
-	}
+	items := normalizeItems(cfg.Items, qtys)
 
 	inv := &Invoice{
 		Year:   year,
@@ -50,27 +35,45 @@ func NewInvoice(invoiceNum string, year, month int, qtys []int, cfg *config.Conf
 		Items:  items,
 		Config: cfg,
 	}
-	inv.InvoiceDate = lastDayOfMonth(year, month)
-	inv.DueDate = calculateDueDate(year, month)
+
+	inv.calculateDates()
 	inv.Period = fmt.Sprintf("%02d/%04d", month, year)
 	inv.InvoiceNum = generateInvoiceNumber(invoiceNum, cfg.Sender.Name, year, month)
-	var subtotal float64
-	for _, item := range items {
-		subtotal += float64(item.Quantity) * item.UnitPrice
-	}
-	inv.Subtotal = subtotal
-	inv.SubtotalStr = fmt.Sprintf("€%.2f", subtotal)
+	inv.Subtotal = calculateSubtotal(items)
+
 	return inv
 }
 
-// GeneratePDF creates a PDF invoice using the config values and writes it to disk.
+// GeneratePDF creates and saves a PDF invoice.
 func (i *Invoice) GeneratePDF() (string, error) {
+	pdf := i.initializePDF()
+
+	i.addHeader(pdf)
+	i.addSenderInfo(pdf)
+	i.addRecipientInfo(pdf)
+	i.addProjectInfo(pdf)
+	i.addItemsTable(pdf)
+	i.addPaymentDetails(pdf)
+	i.addTotal(pdf)
+
+	filename := i.generateFilename()
+	if err := pdf.OutputFileAndClose(filename); err != nil {
+		return "", fmt.Errorf("saving PDF: %w", err)
+	}
+
+	return filename, nil
+}
+
+func (i *Invoice) initializePDF() *fpdf.Fpdf {
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(15, 20, 15)
 	pdf.AddUTF8FontFromBytes("Roboto", "", fonts.RobotoTTF)
 	pdf.AddUTF8FontFromBytes("Roboto", "B", fonts.RobotoTTF)
 	pdf.AddPage()
+	return pdf
+}
 
+func (i *Invoice) addHeader(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Roboto", "B", 20)
 	pdf.SetTextColor(34, 139, 34)
 	pdf.CellFormat(100, 10, "INVOICE", "", 0, "L", false, 0, "")
@@ -82,7 +85,9 @@ func (i *Invoice) GeneratePDF() (string, error) {
 	pdf.CellFormat(0, 5, fmt.Sprintf("Date: %s", i.InvoiceDate.Format("02/01/2006")), "", 1, "R", false, 0, "")
 	pdf.CellFormat(0, 5, fmt.Sprintf("Due date: %s", i.DueDate.Format("02/01/2006")), "", 1, "R", false, 0, "")
 	pdf.Ln(10)
+}
 
+func (i *Invoice) addSenderInfo(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Roboto", "B", 11)
 	pdf.CellFormat(0, 6, "From", "", 1, "", false, 0, "")
 	pdf.SetFont("Roboto", "", 10)
@@ -92,7 +97,9 @@ func (i *Invoice) GeneratePDF() (string, error) {
 	pdf.CellFormat(0, 5, "Reg Nr: "+i.Config.Sender.RegNr, "", 1, "", false, 0, "")
 	pdf.CellFormat(0, 5, "Phone: "+i.Config.Sender.Phone, "", 1, "", false, 0, "")
 	pdf.Ln(8)
+}
 
+func (i *Invoice) addRecipientInfo(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Roboto", "B", 11)
 	pdf.CellFormat(0, 6, "Bill To", "", 1, "", false, 0, "")
 	pdf.SetFont("Roboto", "", 10)
@@ -101,7 +108,9 @@ func (i *Invoice) GeneratePDF() (string, error) {
 		pdf.CellFormat(0, 5, line, "", 1, "", false, 0, "")
 	}
 	pdf.Ln(5)
+}
 
+func (i *Invoice) addProjectInfo(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Roboto", "B", 10)
 	pdf.CellFormat(30, 5, "Project:", "", 0, "", false, 0, "")
 	pdf.SetFont("Roboto", "", 10)
@@ -116,7 +125,9 @@ func (i *Invoice) GeneratePDF() (string, error) {
 	pdf.SetDrawColor(200, 200, 200)
 	pdf.Line(15, currentY, 195, currentY)
 	pdf.Ln(7)
+}
 
+func (i *Invoice) addItemsTable(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Roboto", "B", 10)
 	pdf.SetFillColor(230, 230, 230)
 	pdf.CellFormat(100, 8, "Description", "1", 0, "L", true, 0, "")
@@ -136,15 +147,9 @@ func (i *Invoice) GeneratePDF() (string, error) {
 		pdf.Ln(-1)
 	}
 	pdf.Ln(5)
+}
 
-	pdf.SetFont("Roboto", "B", 10)
-	pdf.CellFormat(100, 6, "", "", 0, "", false, 0, "")
-	pdf.CellFormat(20, 6, "", "", 0, "", false, 0, "")
-	pdf.CellFormat(30, 6, "Subtotal:", "", 0, "R", false, 0, "")
-	pdf.SetFont("Roboto", "", 10)
-	pdf.CellFormat(30, 6, i.SubtotalStr, "", 0, "R", false, 0, "")
-	pdf.Ln(10)
-
+func (i *Invoice) addPaymentDetails(pdf *fpdf.Fpdf) {
 	pdf.SetFont("Roboto", "B", 10)
 	pdf.SetFillColor(230, 230, 230)
 	pdf.CellFormat(120, 8, "Payment details", "1", 1, "L", true, 0, "")
@@ -162,17 +167,56 @@ func (i *Invoice) GeneratePDF() (string, error) {
 		pdf.CellFormat(80, 8, row[1], "1", 1, "L", false, 0, "")
 	}
 	pdf.Ln(5)
+}
+
+func (i *Invoice) addTotal(pdf *fpdf.Fpdf) {
+	subtotalStr := fmt.Sprintf("€%.2f", i.Subtotal)
+
+	pdf.SetFont("Roboto", "B", 10)
+	pdf.CellFormat(100, 6, "", "", 0, "", false, 0, "")
+	pdf.CellFormat(20, 6, "", "", 0, "", false, 0, "")
+	pdf.CellFormat(30, 6, "Subtotal:", "", 0, "R", false, 0, "")
+	pdf.SetFont("Roboto", "", 10)
+	pdf.CellFormat(30, 6, subtotalStr, "", 0, "R", false, 0, "")
+	pdf.Ln(10)
 
 	pdf.SetFont("Roboto", "B", 14)
 	pdf.SetTextColor(255, 0, 128)
-	pdf.CellFormat(0, 8, i.SubtotalStr, "", 0, "R", false, 0, "")
+	pdf.CellFormat(0, 8, subtotalStr, "", 0, "R", false, 0, "")
+}
 
+func (i *Invoice) generateFilename() string {
 	safeName := strings.Replace(i.Config.Sender.Name, " ", "_", -1)
-	filename := fmt.Sprintf("%s_%02d_%04d.pdf", safeName, i.Month, i.Year)
-	if err := pdf.OutputFileAndClose(filename); err != nil {
-		return "", err
+	return fmt.Sprintf("%s_%02d_%04d.pdf", safeName, i.Month, i.Year)
+}
+
+func (i *Invoice) calculateDates() {
+	i.InvoiceDate = lastDayOfMonth(i.Year, i.Month)
+	i.DueDate = calculateDueDate(i.Year, i.Month)
+}
+
+// Utility functions
+func normalizeItems(configItems []config.Item, qtys []int) []config.Item {
+	items := make([]config.Item, len(configItems))
+	copy(items, configItems)
+
+	for i := range items {
+		if i < len(qtys) {
+			items[i].Quantity = qtys[i]
+		} else {
+			items[i].Quantity = 1
+		}
 	}
-	return filename, nil
+
+	return items
+}
+
+func calculateSubtotal(items []config.Item) float64 {
+	var total float64
+	for _, item := range items {
+		total += float64(item.Quantity) * item.UnitPrice
+	}
+	return total
 }
 
 func calculateDueDate(year, month int) time.Time {
