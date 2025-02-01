@@ -17,17 +17,52 @@ A simple command-line tool written in Go that generates professional PDF invoice
 
 ## Installation
 
-1. Clone this repository:
+### Direct Download
+
+Pre-built binaries are available for Linux, macOS, and Windows. You can download the latest release from the [GitHub Releases page](https://github.com/yarlson/invo/releases). For example, if you're using version 2, choose the appropriate archive for your operating system and architecture:
+
+- **Linux (amd64/arm64)**
+- **macOS (amd64/arm64)**
+- **Windows (amd64/arm64)**
+
+After downloading, extract the archive and move the `invo` binary to a directory included in your `PATH` (e.g. `/usr/local/bin` on Unix-like systems).
+
+### Homebrew
+
+If you are on macOS (or Linux with Homebrew), you can install `invo` via Homebrew. The Homebrew formula is maintained in the [homebrew-invo repository](https://github.com/yarlson/homebrew-invo).
+
+To install `invo`, run:
+
+```bash
+brew install yarlson/invo/invo
+```
+
+To verify the installation, run:
+
+```bash
+invo --help
+```
+
+### Building from Source
+
+If you prefer to build from source, follow these steps:
+
+1. **Clone the repository:**
 
    ```bash
    git clone https://github.com/yarlson/invo
    cd invo
    ```
 
-2. Build the program:
+2. **Build the program:**
+
    ```bash
    go build -o invo ./cmd/invoice
    ```
+
+   The project is configured to build with `CGO_ENABLED=0` for portability and supports multiple operating systems and architectures. For example, you can cross-compile for Linux, macOS, or Windows.
+
+After building, move the `invo` binary to a directory included in your `PATH`.
 
 ## Usage
 
