@@ -26,7 +26,7 @@ type Invoice struct {
 }
 
 // NewInvoice creates a new Invoice instance with calculated fields.
-func NewInvoice(invoiceNum string, year, month int, qtys []int, cfg *config.Config) *Invoice {
+func NewInvoice(invoiceNum string, year, month int, qtys []int, cfg *config.Config, invoiceDate, dueDate string) *Invoice {
 	items := normalizeItems(cfg.Items, qtys)
 
 	inv := &Invoice{
@@ -36,7 +36,24 @@ func NewInvoice(invoiceNum string, year, month int, qtys []int, cfg *config.Conf
 		Config: cfg,
 	}
 
-	inv.calculateDates()
+	if invoiceDate != "" {
+		date, err := time.Parse("2006-01-02", invoiceDate)
+		if err == nil {
+			inv.InvoiceDate = date
+		}
+	}
+	if dueDate != "" {
+		date, err := time.Parse("2006-01-02", dueDate)
+		if err == nil {
+			inv.DueDate = date
+		}
+	}
+
+	// Only calculate dates if not provided
+	if inv.InvoiceDate.IsZero() || inv.DueDate.IsZero() {
+		inv.calculateDates()
+	}
+
 	inv.Period = fmt.Sprintf("%02d/%04d", month, year)
 	inv.InvoiceNum = generateInvoiceNumber(invoiceNum, cfg.Sender.Name, year, month)
 	inv.Subtotal = calculateSubtotal(items)

@@ -15,11 +15,13 @@ import (
 )
 
 type flags struct {
-	invoiceNum string
-	year       int
-	month      int
-	quantities string
-	configFile string
+	invoiceNum  string
+	year        int
+	month       int
+	quantities  string
+	configFile  string
+	invoiceDate string
+	dueDate     string
 }
 
 func main() {
@@ -57,7 +59,7 @@ func createRunFunc(f *flags) func(*cobra.Command, []string) error {
 			return fmt.Errorf("loading config: %w", err)
 		}
 
-		inv := invoice.NewInvoice(f.invoiceNum, f.year, f.month, qtys, cfg)
+		inv := invoice.NewInvoice(f.invoiceNum, f.year, f.month, qtys, cfg, f.invoiceDate, f.dueDate)
 		filename, err := inv.GeneratePDF()
 		if err != nil {
 			return fmt.Errorf("generating PDF: %w", err)
@@ -71,11 +73,18 @@ func createRunFunc(f *flags) func(*cobra.Command, []string) error {
 func initFlags(cmd *cobra.Command, f *flags) {
 	currentYear := time.Now().Year()
 
-	cmd.Flags().StringVarP(&f.invoiceNum, "invoice", "i", "01", "Invoice number (e.g. \"01\")")
-	cmd.Flags().IntVarP(&f.year, "year", "y", currentYear, "Invoice year")
-	cmd.Flags().IntVarP(&f.month, "month", "m", 1, "Invoice month (1-12)")
-	cmd.Flags().StringVarP(&f.quantities, "qty", "q", "1", "Comma separated quantities (e.g. \"2,1\")")
+	// Core flags
 	cmd.Flags().StringVarP(&f.configFile, "config", "c", "config.yaml", "Path to config file")
+	cmd.Flags().StringVarP(&f.invoiceNum, "number", "n", "01", "Invoice number")
+
+	// Time-related flags
+	cmd.Flags().IntVarP(&f.year, "year", "y", currentYear, "Year (YYYY)")
+	cmd.Flags().IntVarP(&f.month, "month", "m", 1, "Month (1-12)")
+	cmd.Flags().StringVarP(&f.invoiceDate, "date", "d", "", "Invoice date (YYYY-MM-DD)")
+	cmd.Flags().StringVarP(&f.dueDate, "due", "D", "", "Due date (YYYY-MM-DD)")
+
+	// Item-related flags
+	cmd.Flags().StringVarP(&f.quantities, "quantities", "q", "1", "Comma-separated quantities")
 }
 
 func parseQuantities(qtyStr string) ([]int, error) {
